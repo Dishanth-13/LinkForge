@@ -42,11 +42,11 @@ In an enterprise environment, a link is more than a redirection mechanism; it is
 *   [x] Backing Services Connection Health Endpoints (/live, /ready, /health)
 
 ### Access Control & Security
-*   [ ] Identity & Tenant Registration Service
-*   [ ] Multi-Tenant Organization Isolation Policies
-*   [ ] Asymmetric JWT Authorization (RS256)
+*   [x] Identity & Tenant Registration Service
+*   [x] Multi-Tenant Organization Isolation Policies
+*   [x] Symmetric JWT Authorization (HS256)
 *   [ ] Secure API Key Generation, Rotation, and Constant-Time Verification
-*   [ ] Security Audit Recording Engine (AuditEvent system)
+*   [x] Security Audit Recording Engine (AuditEvent system)
 
 ### Link Engines & Caching
 *   [ ] URL Shortening Engine (Deterministic BIGINT to Base62 encoder)
@@ -144,7 +144,7 @@ linkforge/
 ## Development Roadmap
 
 *   **Milestone 1: Foundation (Completed)**: Scaffolding, Async DB setups, Docker database/cache configuration, Request ID tracing, structured logging, health probes.
-*   **Milestone 2: Identity Service**: Registration, Tenant Scoping, User management, JWT token issue, Audit Logging system.
+*   **Milestone 2: Identity Service (Completed)**: Registration, Tenant Scoping, User management, JWT token issue, Audit Logging system.
 *   **Milestone 3: Link Engine**: Base62 conversion mapping, URL Shortening engine, Expiring Links.
 *   **Milestone 4: Caching**: Redis integration for short URLs read-through caching.
 *   **Milestone 5: Rate Limiting**: Redis Token Bucket rate limiting middleware.

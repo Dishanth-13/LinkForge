@@ -1,16 +1,23 @@
 from collections.abc import AsyncGenerator
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 from app.core.logging import logger
 
-# Establish production-ready async database connection pool
+# Configure connection pooling: use NullPool for tests to prevent loop-closure errors
+pool_config = {}
+if settings.ENVIRONMENT == "testing":
+    pool_config["poolclass"] = NullPool
+else:
+    pool_config["pool_size"] = 20
+    pool_config["max_overflow"] = 10
+    pool_config["pool_pre_ping"] = True
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=False,  # Set to True for debugging SQL statements
-    pool_size=20,          # Size of connection pool
-    max_overflow=10,       # Allow up to 10 overflow connections
-    pool_pre_ping=True,    # Verify connection health before usage (prevents stale connection errors)
+    echo=False,
+    **pool_config
 )
 
 # Create session factory for generating AsyncSession instances

@@ -3,6 +3,8 @@ fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
 pydantic>=2.6.0
 pydantic-settings>=2.2.0
+email-validator>=2.0.0
+python-multipart>=0.0.9
 
 # Database & Caching
 SQLAlchemy[asyncio]>=2.0.28
@@ -14,6 +16,8 @@ redis>=5.0.2
 structlog>=24.1.0
 python-dotenv>=1.0.1
 uuid>=1.30
+pyjwt>=2.8.0
+argon2-cffi>=23.1.0
 
 # Testing
 pytest>=8.0.0

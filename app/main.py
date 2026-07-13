@@ -5,6 +5,9 @@ from app.core.logging import logger
 from app.core.redis import redis_manager
 from app.middleware.request_id import RequestIdMiddleware
 from app.features.health.router import router as health_router
+from app.features.auth.router import router as auth_router
+from app.features.users.router import router as user_router
+from app.features.organizations.router import router as org_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,3 +38,6 @@ app.add_middleware(RequestIdMiddleware)
 
 # Register functional features
 app.include_router(health_router)
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(user_router, prefix="/api/v1")
+app.include_router(org_router, prefix="/api/v1")
