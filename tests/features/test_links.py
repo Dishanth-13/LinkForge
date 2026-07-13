@@ -239,6 +239,10 @@ async def test_link_expirations(async_client, db_session: AsyncSession):
     link_record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=10)
     await db_session.commit()
     
+    # Evict cache key manually since we updated database state directly
+    from app.features.links.service import delete_link_cache
+    await delete_link_cache(short_code)
+    
     # Verify redirect resolved path now returns 404
     redirect_res_expired = await async_client.get(f"/{short_code}")
     assert redirect_res_expired.status_code == status.HTTP_404_NOT_FOUND

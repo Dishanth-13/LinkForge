@@ -231,3 +231,81 @@ async def increment_click_count_atomic(
     query = update(Link).where(Link.id == link_id).values(click_count=Link.click_count + 1)
     await db.execute(query)
     await db.flush()
+
+
+# ==========================================
+# Redis Cache Management Helpers
+# ==========================================
+
+import json
+from app.core.redis import redis_manager
+from app.core.config import settings
+from app.core.logging import logger
+
+CACHE_VERSION = "v1"
+
+def get_cache_key(code: str) -> str:
+    return f"{CACHE_VERSION}:link:code:{code}"
+
+async def get_cached_link(code: str) -> Optional[dict]:
+    """
+    Attempts to read cached link properties from Redis.
+    Bypasses and logs warnings if Redis is down.
+    """
+    if not redis_manager.client:
+        return None
+    try:
+        data = await redis_manager.client.get(get_cache_key(code))
+        if data:
+            return json.loads(data)
+    except Exception as e:
+        logger.warning("Redis read operation failed", error=str(e), key=code)
+    return None
+
+async def set_link_cache(link: Link) -> None:
+    """
+    Caches link target info in Redis. Writes keys for both short_code and custom_alias if set.
+    """
+    if not redis_manager.client:
+        return
+    try:
+        expires_str = link.expires_at.isoformat() if link.expires_at else None
+        payload = {
+            "id": str(link.id),
+            "original_url": link.original_url,
+            "expires_at": expires_str,
+            "is_active": link.is_active
+        }
+        serialized = json.dumps(payload)
+        
+        # Write short_code key
+        await redis_manager.client.set(
+            get_cache_key(link.short_code),
+            serialized,
+            ex=settings.CACHE_TTL_SECONDS
+        )
+        
+        # Write custom_alias key if set
+        if link.custom_alias:
+            await redis_manager.client.set(
+                get_cache_key(link.custom_alias),
+                serialized,
+                ex=settings.CACHE_TTL_SECONDS
+            )
+    except Exception as e:
+        logger.warning("Redis write operation failed", error=str(e), link_id=str(link.id))
+
+async def delete_link_cache(short_code: str, custom_alias: Optional[str] = None) -> None:
+    """
+    Invalidates cached link target keys.
+    """
+    if not redis_manager.client:
+        return
+    try:
+        keys = [get_cache_key(short_code)]
+        if custom_alias:
+            keys.append(get_cache_key(custom_alias))
+        await redis_manager.client.delete(*keys)
+    except Exception as e:
+        logger.warning("Redis delete operation failed", error=str(e), short_code=short_code)
+

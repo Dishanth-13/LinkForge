@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://localhost:6379/0"
+    CACHE_TTL_SECONDS: int = 3600
 
     # Security Settings
     JWT_SECRET_KEY: str = "dev_secret_key_change_in_production_32_chars"

@@ -7,6 +7,16 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import app
 from app.core.database import get_db, engine
+from app.core.redis import redis_manager
+
+@pytest.fixture(autouse=True)
+async def init_redis_client():
+    """
+    Ensures the Redis connection client is initialized for tests.
+    """
+    if redis_manager.client is None:
+        redis_manager.init_client()
+    yield
 
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:

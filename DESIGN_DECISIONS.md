@@ -230,7 +230,54 @@ We chose **HTTP 302 Found** for standard link redirection.
     *   **Flexibility**: Unlike 301, HTTP 302 is not cached by client browsers, ensuring every click hits our redirect endpoint so we capture telemetry.
     *   **Target Verb Adaptation**: Allows changing destination locations in the future without client-side verb restrictions.
 *   *Cons*:
-    *   Slightly higher network round-trip overhead compared to 301 cached redirects. (An absolute requirement to capture click counts).
+    *   Slightly higher network round-trip overhead compared to 301 cached redirects. (An absolute requirement to capture click counts).---
 
+# Design Decisions: Milestone 4 (Redis Caching)
 
+This section details the architectural choices, tradeoffs, and design patterns established during Milestone 4 (Redis Read-Through Cache) of the LinkForge project.
 
+---
+
+## 12. Version-Prefixed Redis Cache Keys
+
+### Decided Approach
+We prefixed all Redis cache keys with a versions label, mapping to `v1:link:code:{code}` (where `code` is either the Base62 short_code or custom_alias).
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Forward Compatibility**: If we modify the cached JSON payload schema in future releases (e.g. adding tenant details or telemetry metrics), we can simply bump the version to `v2:`. The system will automatically fetch misses using the new payload shape without requiring manual cache flushing or script evictions of `v1` keys.
+*   *Cons*:
+    *   Slightly longer key sizes, resulting in a minimal increase in Redis memory usage (negligible for standard production instances).
+
+### Interview Talking Points
+> *"To ensure seamless future updates to our cached data structures, we prefix all Redis keys with a schema version (e.g. `v1:link:code:`). This allows us to evolve the serialized JSON structure in production without manual cache clearing or running migrations, simply by bumping the version label in settings."*
+
+---
+
+## 13. Post-Commit Cache Eviction Hooks
+
+### Decided Approach
+We trigger cache evictions in the router controllers *after* the PostgreSQL transaction successfully commits (`db.commit()`), rather than executing deletion queries before the commit or in the service functions.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Data Integrity**: Prevents race conditions where a cached key is evicted, but the DB update rolls back due to a constraint check failure, leaving the cache populated with correct data while keeping the system consistent.
+    *   **Transactional Alignment**: Ensures we only clear keys when mutations are guaranteed to be saved in PostgreSQL (the source of truth).
+*   *Cons*:
+    *   Requires tracking key strings (`old_short_code`, `old_custom_alias`) in the router before database mutation occurs.
+
+---
+
+## 14. Fail-Safe Offline Degradation
+
+### Decided Approach
+We catch all Redis network operations inside `try...except Exception` blocks, logging warnings with structlog, and falling back directly to PostgreSQL queries.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **High Availability**: A Redis cluster crash or network partition will not crash the LinkForge redirect service. The service degrades gracefully to database speed instead of throwing 500 errors.
+*   *Cons*:
+    *   Database connection pool exhaustion risk if Redis goes offline during high-traffic events. (An acceptable risk compared to immediate downtime; mitigated by DB scaling and connection pooling limits).
+
+### Interview Talking Points
+> *"High availability of redirections is a critical SLA. We wrapped all Redis operations in try-except blocks to catch connection or socket timeouts. If Redis becomes unavailable, the system logs a structured warning and degrades gracefully by routing lookups directly to PostgreSQL, keeping the service online."*

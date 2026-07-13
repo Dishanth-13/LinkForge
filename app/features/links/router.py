@@ -1,5 +1,6 @@
 import uuid
 from typing import Optional, List
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,10 @@ from app.features.links.service import (
     update_link,
     soft_delete_link,
     resolve_link_by_code,
-    increment_click_count_atomic
+    increment_click_count_atomic,
+    get_cached_link,
+    set_link_cache,
+    delete_link_cache
 )
 from app.features.audit.services import log_audit_event
 from pydantic import BaseModel, field_validator
@@ -140,6 +144,16 @@ async def modify_link(
     Generates a security AuditEvent tracking modifications.
     """
     try:
+        # Pre-load existing link to capture current cache keys
+        existing_link = await get_link_by_id(db, link_id, organization_id)
+        if not existing_link:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Link not found or access denied."
+            )
+        old_short_code = existing_link.short_code
+        old_custom_alias = existing_link.custom_alias
+
         link = await update_link(db, link_id, organization_id, payload)
         if not link:
             raise HTTPException(
@@ -162,6 +176,11 @@ async def modify_link(
         )
         
         await db.commit()
+
+        # Invalidate old and new cache keys after commit
+        await delete_link_cache(old_short_code, old_custom_alias)
+        await delete_link_cache(link.short_code, link.custom_alias)
+
         return link
     except HTTPException:
         raise
@@ -185,13 +204,15 @@ async def delete_link(
     Generates a security AuditEvent logging deletion.
     """
     try:
-        # Fetch link first to get code for audits
+        # Fetch link first to get code for audits and cache invalidation
         link = await get_link_by_id(db, link_id, organization_id)
         if not link:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Link not found or access denied."
             )
+        old_short_code = link.short_code
+        old_custom_alias = link.custom_alias
             
         await soft_delete_link(db, link_id, organization_id)
         
@@ -206,6 +227,10 @@ async def delete_link(
         )
         
         await db.commit()
+
+        # Invalidate cache keys after commit
+        await delete_link_cache(old_short_code, old_custom_alias)
+
         return {"status": "success", "message": "Link soft-deleted successfully"}
     except HTTPException:
         raise
@@ -224,9 +249,45 @@ async def redirect_to_url(
 ):
     """
     Global Redirection Endpoint.
-    Resolves the short code or custom alias, increments the click counter atomically, 
-    and redirects the client via HTTP 302 Found.
+    Resolves the short code or custom alias using Redis (falling back to Postgres),
+    increments the click counter atomically, and redirects the client via HTTP 302 Found.
     """
+    # 1. Cache lookup
+    cached = await get_cached_link(short_code)
+    if cached:
+        is_active = cached.get("is_active", True)
+        expires_at_str = cached.get("expires_at")
+        
+        is_expired = False
+        if expires_at_str:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at < datetime.now(timezone.utc):
+                    is_expired = True
+            except Exception:
+                is_expired = True
+                
+        if not is_active or is_expired:
+            # Clear invalid cache keys
+            await delete_link_cache(short_code)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="The link does not exist, has expired, or is inactive."
+            )
+            
+        # Cache Hit flow: Increment count atomically in PostgreSQL and redirect
+        link_id = int(cached["id"])
+        await increment_click_count_atomic(db, link_id)
+        await db.commit()
+        
+        return RedirectResponse(
+            url=cached["original_url"],
+            status_code=status.HTTP_302_FOUND
+        )
+
+    # 2. Cache Miss / Redis offline flow: query PostgreSQL database
     link = await resolve_link_by_code(db, short_code)
     if not link:
         raise HTTPException(
@@ -234,7 +295,10 @@ async def redirect_to_url(
             detail="The link does not exist, has expired, or is inactive."
         )
         
-    # Atomic increment click count directly in database
+    # Populate the Redis cache
+    await set_link_cache(link)
+    
+    # Increment counter atomically in PostgreSQL
     await increment_click_count_atomic(db, link.id)
     await db.commit()
     
