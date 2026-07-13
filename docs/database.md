@@ -54,6 +54,25 @@ Stores rotated token session tracking data for user logins.
 | `revoked_at` | `TIMESTAMPTZ` | Nullable | Timestamp of rotation or explicit logout. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | Session initialization timestamp. |
 
+### `links`
+Stores custom short URL metadata, alias references, and click counters.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `BIGINT` | PRIMARY KEY, AUTO-INCREMENT | Sequential primary key (safeguards B-tree indexing). |
+| `organization_id` | `UUID` | FOREIGN KEY, INDEX, NOT NULL | Reference to organization owner (Cascade delete). |
+| `created_by` | `UUID` | FOREIGN KEY, INDEX, NOT NULL | Reference to user who created the link (Cascade delete). |
+| `original_url` | `VARCHAR(2048)` | NOT NULL | Destination redirect target. |
+| `short_code` | `VARCHAR(50)` | UNIQUE, INDEX, NOT NULL | Generated Base62 hash string. |
+| `custom_alias` | `VARCHAR(50)` | UNIQUE (Scoped), INDEX, Nullable | Tenant-scoped alias string. |
+| `title` | `VARCHAR(255)` | Nullable | Link title text. |
+| `description` | `TEXT` | Nullable | Detail summary notes. |
+| `is_active` | `BOOLEAN` | NOT NULL, DEFAULT: TRUE | Active/Soft-deleted toggle. |
+| `expires_at` | `TIMESTAMPTZ` | INDEX, Nullable | Expiration cutoff timestamp. |
+| `click_count` | `BIGINT` | NOT NULL, DEFAULT: 0 | Total redirection calls. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | Record initialization date. |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL | Record edit date. |
+
 ### `audit_events`
 Stores security-sensitive operation trails.
 
@@ -75,6 +94,11 @@ Stores security-sensitive operation trails.
 *   `ix_users_organization_id`: Index on `User.organization_id` for tenant user list lookups.
 *   `ix_refresh_tokens_jti`: Unique index on `RefreshToken.jti` to enable fast rotation queries.
 *   `ix_refresh_tokens_user_id`: Index on `RefreshToken.user_id` for revoking all sessions for a user during breach alarms.
+*   `ix_links_short_code`: Unique index on `Link.short_code` for O(1) redirects.
+*   `ix_links_custom_alias`: Index on `Link.custom_alias` for alias lookups.
+*   `uq_links_org_alias`: Unique index on `(organization_id, custom_alias)` for tenant-scoped alias checks.
+*   `ix_links_organization_id`: Index on `Link.organization_id` for scoping list queries.
+*   `ix_links_expires_at`: Index on `Link.expires_at` for filtering out expired URLs.
 *   `ix_audit_events_organization_id`: Index on `AuditEvent.organization_id` for scoped event log queries.
 *   `ix_audit_events_request_id`: Index on `AuditEvent.request_id` for tracing logs by HTTP requests.
 *   `ix_audit_events_event_type`: Index on `AuditEvent.event_type` for filtering logs by action types.

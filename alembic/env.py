@@ -19,6 +19,7 @@ from app.features.audit.models import AuditEvent
 from app.features.organizations.models import Organization
 from app.features.users.models import User
 from app.features.auth.models import RefreshToken
+from app.features.links.models import Link
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

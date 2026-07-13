@@ -170,4 +170,67 @@ We chose **HTTPBearer** (Authorization: Bearer <JWT>) for the Swagger OpenAPI se
 ### Interview Talking Points
 > *"To ensure that our REST API contracts remain strictly aligned with production clients, we configured the OpenAPI security schema to use HTTPBearer instead of the standard OAuth2PasswordBearer flow. This avoids polluting our endpoints with helper fallback routes designed solely to support Swagger UI's form-urlencoded authentication form, while maintaining a pure JSON request/response contract for credential verification."*
 
+---
+
+# Design Decisions: Milestone 3 (Link Service)
+
+This section details the architectural choices, tradeoffs, and design patterns established during Milestone 3 of the LinkForge project.
+
+---
+
+## 9. Deterministic Base62 Encoding for URL Shortening
+
+### Decided Approach
+We implemented a pure, deterministic Base62 encoding algorithm utilizing the character set `0-9a-zA-Z`. We map database sequential `BIGINT` auto-increment primary keys to Base62 strings.
+
+### Alternatives Considered
+*   **UUID-based Short Codes**: Standard 36-character string UUIDs (too long, defies the purpose of a shortener).
+*   **Random String Generation**: Generating random alphanumeric characters and checking for uniqueness in loops (causes database read-write race conditions and lookup overhead as the database grows).
+*   **Hashids / External Libraries**: External dependency inclusion.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Collision Free**: Mapping directly to a sequence ID guarantees that no two generated short codes will ever collide.
+    *   **High Index Efficiency**: Primary keys are sequential, avoiding B-tree index fragmentation in PostgreSQL.
+*   *Cons*:
+    *   **Information Leakage**: Sequentially mapped codes can be decoded back to integers (e.g. `1`, `2`, `3`), allowing adversaries to estimate link creation velocity and counts. (We will introduce an obfuscation layer like LCG or block cipher in scaling revisions if required).
+
+### Interview Talking Points
+> *"We implemented a custom, pure mathematical Base62 encoder to map database auto-increment BIGINT IDs into short URLs. This guarantees collision-free short codes while eliminating the overhead of checking for random duplicates in database loops. It also preserves sequential keys for PostgreSQL B-tree optimization, preventing index fragmentation."*
+
+---
+
+## 10. Tenant-Scoped Custom Aliases
+
+### Decided Approach
+We enforced custom alias uniqueness scoped strictly to the organization level: `UNIQUE (organization_id, custom_alias)`.
+
+### Alternatives Considered
+*   **Global Custom Alias Uniqueness**: Blocking duplicates globally (e.g. only one `/github` alias allowed across the entire system).
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **SaaS Multi-Tenancy Alignment**: Tenants (Organizations) expect control over their URL namespaces (e.g. Acme Corp and Beta Corp both want a `/docs` or `/github` short link).
+*   *Cons*:
+    *   **Redirection Ambiguity**: If multiple organizations configure the same custom alias, resolving `GET /docs` globally becomes ambiguous unless scoped by request hostname or subdomain. (We handle this by resolving to the earliest active mapping on shared domains, preparing the infrastructure for custom tenant domain lookups).
+
+---
+
+## 11. Redirect HTTP Codes: 302 Found vs. 307 Temporary Redirect
+
+### Decided Approach
+We chose **HTTP 302 Found** for standard link redirection.
+
+### Alternatives Considered
+*   **HTTP 307 Temporary Redirect**: Preserves request HTTP verb.
+*   **HTTP 301 Moved Permanently**: Browsers cache the redirect destination locally.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Flexibility**: Unlike 301, HTTP 302 is not cached by client browsers, ensuring every click hits our redirect endpoint so we capture telemetry.
+    *   **Target Verb Adaptation**: Allows changing destination locations in the future without client-side verb restrictions.
+*   *Cons*:
+    *   Slightly higher network round-trip overhead compared to 301 cached redirects. (An absolute requirement to capture click counts).
+
+
 

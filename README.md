@@ -8,12 +8,13 @@ LinkForge is a high-performance, multi-tenant backend platform designed as a pro
 
 ## Current Status
 
-*   **Current Version**: `v0.2.0` (Identity & Tenant Management Service)
+*   **Current Version**: `v0.3.0` (Link Management Service)
 *   **Completed Milestones**:
     *   **Milestone 1**: Foundation setup (Scaffolding, Async PG Database setups, custom logging, and health probes).
     *   **Milestone 2**: Identity Service (SaaS organizations, User management, Argon2id passwords, and JWT session rotation).
-*   **Current Milestone**: **Milestone 3**: Link Engine (Base62 URL shortening, expiring link rules, and routing).
-*   **Upcoming Milestones**: Redis read-through caching, Redis token bucket rate limiting, Celery click telemetry processing, Prometheus metric scraping, and API Key validation.
+    *   **Milestone 3**: Link Engine (Base62 URL shortening, custom aliases, metadata, and redirection lookup).
+*   **Current Milestone**: **Milestone 4**: Caching (Redis integration for short URLs read-through caching).
+*   **Upcoming Milestones**: Redis token bucket rate limiting, Celery click telemetry processing, Prometheus metric scraping, and API Key validation.
 
 ---
 
@@ -93,6 +94,7 @@ linkforge/
 │       ├── audit/           # Security audit event logs
 │       ├── auth/            # Token generation, logins, logout, and RTR helpers
 │       ├── health/          # System connection status checks
+│       ├── links/           # Shortening, aliases, and redirect services
 │       ├── organizations/   # SaaS organizations (Tenants)
 │       └── users/           # User credentials and RBAC
 ├── docs/                    # Schema models and architecture specs
@@ -101,6 +103,19 @@ linkforge/
 ├── pytest.ini               # Test configuration properties
 └── requirements.txt         # Core dependencies manifest
 ```
+
+---
+
+## Development Roadmap
+
+*   **Milestone 1: Foundation (Completed)**: Scaffolding, Async DB setups, Docker database/cache configuration, Request ID tracing, structured logging, health probes.
+*   **Milestone 2: Identity Service (Completed)**: Registration, Tenant Scoping, User management, JWT token issue, Audit Logging system.
+*   **Milestone 3: Link Engine (Completed)**: Base62 conversion mapping, URL Shortening engine, Custom Aliases, Expiration constraints, Redirection, atomic click count.
+*   **Milestone 4: Caching (Current)**: Redis integration for short URLs read-through caching.
+*   **Milestone 5: Rate Limiting**: Redis Token Bucket rate limiting middleware.
+*   **Milestone 6: Analytics**: Redis Event Pipeline, Celery background worker, User-Agent parsing, click telemetry metrics.
+*   **Milestone 7: API Keys**: Programmatic token generation, SHA-256 secure hashing, role validation.
+*   **Milestone 8: Observability**: Prometheus scraping routes and Grafana dashboards.
 
 ---
 
