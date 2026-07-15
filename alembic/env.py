@@ -20,6 +20,7 @@ from app.features.organizations.models import Organization
 from app.features.users.models import User
 from app.features.auth.models import RefreshToken
 from app.features.links.models import Link
+from app.features.analytics.models import ClickEvent
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

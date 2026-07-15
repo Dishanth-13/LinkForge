@@ -102,3 +102,42 @@ Stores security-sensitive operation trails.
 *   `ix_audit_events_organization_id`: Index on `AuditEvent.organization_id` for scoped event log queries.
 *   `ix_audit_events_request_id`: Index on `AuditEvent.request_id` for tracing logs by HTTP requests.
 *   `ix_audit_events_event_type`: Index on `AuditEvent.event_type` for filtering logs by action types.
+
+### `click_events`
+Stores parsed client device and redirection metadata asynchronously.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `UUID` | PRIMARY KEY | Unique identifier for the click event (event_id for idempotency). |
+| `link_id` | `BIGINT` | FOREIGN KEY, INDEX, NOT NULL | Reference to the shortened link (Cascade delete). |
+| `organization_id` | `UUID` | FOREIGN KEY, INDEX, NOT NULL | Reference to the tenant organization (Cascade delete). |
+| `timestamp` | `TIMESTAMPTZ` | INDEX, NOT NULL | Click event occurrence timestamp. |
+| `ip_hash` | `VARCHAR(64)` | NOT NULL | SHA-256 hash of the client IP address. |
+| `user_agent` | `VARCHAR(1000)` | NOT NULL | Raw User-Agent string. |
+| `referer` | `VARCHAR(2048)` | Nullable | Client HTTP referer header. |
+| `country` | `VARCHAR(100)` | Nullable | Resolved country name (NULL in this milestone). |
+| `device_type` | `VARCHAR(50)` | NOT NULL | Resolved device category (e.g. `desktop`, `mobile`, `tablet`). |
+| `browser` | `VARCHAR(100)` | NOT NULL | Resolved client browser name and version. |
+| `os` | `VARCHAR(100)` | NOT NULL | Resolved client operating system and version. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | Event insertion date. |
+
+---
+
+## 3. Database Indexes
+
+*   `ix_users_email`: Index on `User.email` for credential lookup queries.
+*   `ix_users_organization_id`: Index on `User.organization_id` for tenant user list lookups.
+*   `ix_refresh_tokens_jti`: Unique index on `RefreshToken.jti` to enable fast rotation queries.
+*   `ix_refresh_tokens_user_id`: Index on `RefreshToken.user_id` for revoking all sessions for a user during breach alarms.
+*   `ix_links_short_code`: Unique index on `Link.short_code` for O(1) redirects.
+*   `ix_links_custom_alias`: Index on `Link.custom_alias` for alias lookups.
+*   `uq_links_org_alias`: Unique index on `(organization_id, custom_alias)` for tenant-scoped alias checks.
+*   `ix_links_organization_id`: Index on `Link.organization_id` for scoping list queries.
+*   `ix_links_expires_at`: Index on `Link.expires_at` for filtering out expired URLs.
+*   `ix_audit_events_organization_id`: Index on `AuditEvent.organization_id` for scoped event log queries.
+*   `ix_audit_events_request_id`: Index on `AuditEvent.request_id` for tracing logs by HTTP requests.
+*   `ix_audit_events_event_type`: Index on `AuditEvent.event_type` for filtering logs by action types.
+*   `ix_click_events_link_id`: Index on `ClickEvent.link_id` for link-specific analytics aggregates.
+*   `ix_click_events_organization_id`: Index on `ClickEvent.organization_id` for organization analytics scoping.
+*   `ix_click_events_timestamp`: Index on `ClickEvent.timestamp` for time-series analytics charts.
+

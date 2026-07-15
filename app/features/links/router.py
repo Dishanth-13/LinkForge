@@ -21,6 +21,8 @@ from app.features.links.service import (
     delete_link_cache
 )
 from app.features.audit.services import log_audit_event
+from app.features.analytics.publishers import TelemetryPublisher
+from app.features.links.models import Link
 from pydantic import BaseModel, field_validator
 
 # Define routers
@@ -250,8 +252,16 @@ async def redirect_to_url(
     """
     Global Redirection Endpoint.
     Resolves the short code or custom alias using Redis (falling back to Postgres),
-    increments the click counter atomically, and redirects the client via HTTP 302 Found.
+    increments the click counter atomically, publishes an asynchronous click event,
+    and redirects the client via HTTP 302 Found.
     """
+    # Parse client request details for telemetry tracking
+    user_agent = request.headers.get("user-agent", "")
+    referer = request.headers.get("referer")
+    ip_address = request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for") or request.client.host
+    if ip_address and "," in ip_address:
+        ip_address = ip_address.split(",")[0].strip()
+
     # 1. Cache lookup
     cached = await get_cached_link(short_code)
     if cached:
@@ -277,10 +287,27 @@ async def redirect_to_url(
                 detail="The link does not exist, has expired, or is inactive."
             )
             
-        # Cache Hit flow: Increment count atomically in PostgreSQL and redirect
+        # Cache Hit flow: Increment count atomically in PostgreSQL, publish telemetry, and redirect
         link_id = int(cached["id"])
         await increment_click_count_atomic(db, link_id)
         await db.commit()
+        
+        # Resolve organization_id with safe fallback for backward-compatible cache payloads
+        org_id_str = cached.get("organization_id")
+        if org_id_str:
+            org_id = uuid.UUID(org_id_str)
+        else:
+            link_db = await db.get(Link, link_id)
+            org_id = link_db.organization_id if link_db else None
+
+        if org_id:
+            TelemetryPublisher.publish_click_event(
+                link_id=link_id,
+                organization_id=org_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                referer=referer
+            )
         
         return RedirectResponse(
             url=cached["original_url"],
@@ -301,6 +328,14 @@ async def redirect_to_url(
     # Increment counter atomically in PostgreSQL
     await increment_click_count_atomic(db, link.id)
     await db.commit()
+    
+    TelemetryPublisher.publish_click_event(
+        link_id=link.id,
+        organization_id=link.organization_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        referer=referer
+    )
     
     return RedirectResponse(
         url=link.original_url,

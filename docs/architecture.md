@@ -136,3 +136,39 @@ Standard rate limit metadata is injected onto all HTTP responses matching rate-l
 ### 5.4 Resiliency & Fail-Open
 If Redis is down or connections time out, the middleware intercepts the exception, prints a structured `warning` log via `structlog`, and **fails open**, allowing the request to proceed. Endpoint availability is prioritized over enforcement.
 
+---
+
+## 6. Asynchronous Click Telemetry Pipeline
+
+LinkForge uses an asynchronous event-driven pipeline to parse and persist rich click telemetry without adding latency to the client redirect path.
+
+### 6.1 TelemetryPublisher Service Abstraction
+*   The global redirection endpoint (`GET /{short_code}`) calls the `TelemetryPublisher.publish_click_event(...)` service abstraction. It extracts the raw User-Agent string, Referer, and client IP address.
+*   **Fail-Open Publishing**: The publisher wraps task queuing in `try...except` and catches broker connection errors, logging structured warnings and falling open. This ensures link redirects remain highly available even if Redis or Celery workers are down.
+
+### 6.2 Redis & Celery Queues
+*   The publisher invokes Celery's `.apply_async()` method to queue a JSON event payload into the Redis broker.
+*   **Delivery Guarantees**: Celery is configured with `acks_late=True` and `task_reject_on_worker_lost=True`. Workers acknowledge task completion *after* the PostgreSQL transaction successfully commits. If a worker process is terminated mid-task, the event is automatically re-queued.
+
+### 6.3 Event Payload Schema (Version 1)
+```json
+{
+  "event_id": "uuid4_string",
+  "event_version": 1,
+  "link_id": 12345,
+  "organization_id": "org_uuid_string",
+  "timestamp": "ISO_8601_timestamp",
+  "ip_address": "185.120.44.5",
+  "user_agent": "Mozilla/5.0 ...",
+  "referer": "https://google.com"
+}
+```
+
+### 6.4 Worker Telemetry Extraction
+The Celery worker consumes task payloads and processes them:
+1.  **Metadata Parsing**: Uses `user-agents` to parse browser, operating system, and device type category details.
+2.  **Privacy Hashing**: Computes a SHA-256 hash of the raw client IP address. Raw IP addresses are never persisted in PostgreSQL storage.
+3.  **Exactly-Once Idempotency**: Executes the write inside a SQL nested transaction (`db.begin_nested()`). If a duplicate `event_id` is re-delivered, PostgreSQL's primary key constraint raises an IntegrityError. The worker catches this exception and returns successfully (no-op), neutralizing duplicate deliveries without corrupting database state.
+4.  **Exponential Backoff Retries**: If transient database connection errors (`OperationalError`) occur, the worker catches the error and retries execution using exponential backoff:
+    $$\text{countdown} = 2^{\text{retries}} \times 5\text{ seconds}$$
+

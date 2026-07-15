@@ -272,6 +272,7 @@ async def set_link_cache(link: Link) -> None:
         expires_str = link.expires_at.isoformat() if link.expires_at else None
         payload = {
             "id": str(link.id),
+            "organization_id": str(link.organization_id),
             "original_url": link.original_url,
             "expires_at": expires_str,
             "is_active": link.is_active
