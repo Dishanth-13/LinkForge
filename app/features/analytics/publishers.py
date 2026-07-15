@@ -4,6 +4,8 @@ from typing import Optional
 from app.core.logging import logger
 from app.features.analytics.tasks import process_click_telemetry
 
+from app.core.metrics import linkforge_click_events_published_total, safe_inc
+
 class TelemetryPublisher:
     @staticmethod
     def publish_click_event(
@@ -34,6 +36,7 @@ class TelemetryPublisher:
         try:
             # Prefer apply_async over delay as requested
             process_click_telemetry.apply_async(args=[payload])
+            safe_inc(linkforge_click_events_published_total)
             logger.info("Telemetry click event published to Celery queue", event_id=str(event_id), link_id=link_id)
         except Exception as e:
             # Graceful fail-open resilience: log warning and continue

@@ -23,6 +23,7 @@ from app.features.links.service import (
 from app.features.audit.services import log_audit_event
 from app.features.analytics.publishers import TelemetryPublisher
 from app.features.links.models import Link
+from app.core.metrics import linkforge_redirects_total, safe_inc
 from pydantic import BaseModel, field_validator
 
 # Define routers
@@ -309,6 +310,8 @@ async def redirect_to_url(
                 referer=referer
             )
         
+        safe_inc(linkforge_redirects_total, labels={"cache": "hit"})
+        
         return RedirectResponse(
             url=cached["original_url"],
             status_code=status.HTTP_302_FOUND
@@ -336,6 +339,8 @@ async def redirect_to_url(
         user_agent=user_agent,
         referer=referer
     )
+    
+    safe_inc(linkforge_redirects_total, labels={"cache": "miss"})
     
     return RedirectResponse(
         url=link.original_url,

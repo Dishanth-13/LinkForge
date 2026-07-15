@@ -7,6 +7,12 @@ from app.core.celery import celery_app
 from app.core.database import SessionLocal
 from app.core.logging import logger
 from app.features.analytics.models import ClickEvent
+from app.core.metrics import (
+    linkforge_click_events_processed_total,
+    linkforge_click_events_failed_total,
+    db_latency_tracker,
+    safe_inc
+)
 
 @celery_app.task(bind=True, max_retries=5, default_retry_delay=5)
 def process_click_telemetry(self, event_data: dict) -> None:
@@ -86,18 +92,31 @@ async def async_process_click_telemetry(self, event_data: dict) -> None:
         async with SessionLocal() as db:
             try:
                 # Use a savepoint/nested transaction to isolate integrity conflicts
-                async with db.begin_nested():
-                    db.add(click_event)
-                await db.commit()
+                with db_latency_tracker("telemetry_insert"):
+                    async with db.begin_nested():
+                        db.add(click_event)
+                    await db.commit()
                 logger.info("Telemetry event persisted successfully", event_id=event_id_str)
+                safe_inc(linkforge_click_events_processed_total)
             except IntegrityError:
                 # Savepoint has automatically rolled back, no-op the duplicate event
+                # Duplicate events count as processed/deduplicated successfully
                 logger.info("Duplicate telemetry event ignored (idempotent no-op)", event_id=event_id_str)
+                safe_inc(linkforge_click_events_processed_total)
     except OperationalError as exc:
         # Retry transient database connection failures with exponential backoff
         logger.warning("Transient database error during telemetry execution, retrying", error=str(exc))
         countdown = 2 ** self.request.retries * 5
-        raise self.retry(exc=exc, countdown=countdown)
+        try:
+            raise self.retry(exc=exc, countdown=countdown)
+        except Exception as retry_exc:
+            from celery.exceptions import MaxRetriesExceededError
+            if isinstance(retry_exc, MaxRetriesExceededError):
+                safe_inc(linkforge_click_events_failed_total)
+            raise retry_exc
     except Exception as exc:
+        from celery.exceptions import Retry, MaxRetriesExceededError
+        if not isinstance(exc, (Retry, MaxRetriesExceededError)):
+            safe_inc(linkforge_click_events_failed_total)
         logger.error("Unhandled error during telemetry execution", error=str(exc))
         raise exc

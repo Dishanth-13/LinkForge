@@ -7,6 +7,12 @@ from app.core.redis import redis_manager
 from app.core.logging import logger
 from app.features.auth.services import decode_token
 
+from app.core.metrics import (
+    linkforge_rate_limit_allowed_total,
+    linkforge_rate_limit_blocked_total,
+    safe_inc
+)
+
 # Redis Lua Script for Atomic Token Bucket Rate Limiting
 LUA_RATE_LIMITER = """
 local key = KEYS[1]
@@ -95,6 +101,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             allowed, remaining, retry_after = await evaluate_limit(key, settings.AUTH_RATE_LIMIT, settings.AUTH_RATE_WINDOW)
 
             if not allowed:
+                safe_inc(linkforge_rate_limit_blocked_total, labels={"scope": "auth_ip"})
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     content={"detail": "Rate limit exceeded."},
@@ -105,6 +112,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     }
                 )
             
+            safe_inc(linkforge_rate_limit_allowed_total, labels={"scope": "auth_ip"})
             response = await call_next(request)
             response.headers["X-RateLimit-Limit"] = str(settings.AUTH_RATE_LIMIT)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
@@ -122,6 +130,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Step A: Evaluate IP Limit
             ip_allowed, ip_remaining, ip_retry = await evaluate_limit(ip_key, settings.LINK_CREATE_RATE_LIMIT, settings.LINK_CREATE_RATE_WINDOW)
             if not ip_allowed:
+                safe_inc(linkforge_rate_limit_blocked_total, labels={"scope": "link_ip"})
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     content={"detail": "Rate limit exceeded."},
@@ -131,6 +140,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                         "Retry-After": str(ip_retry)
                     }
                 )
+
+            safe_inc(linkforge_rate_limit_allowed_total, labels={"scope": "link_ip"})
 
             # Step B: Evaluate User Limit if authenticated
             user_id = None
@@ -146,6 +157,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 user_key = f"v1:ratelimit:links:user:{user_id}"
                 user_allowed, user_remaining, user_retry = await evaluate_limit(user_key, settings.LINK_CREATE_RATE_LIMIT, settings.LINK_CREATE_RATE_WINDOW)
                 if not user_allowed:
+                    safe_inc(linkforge_rate_limit_blocked_total, labels={"scope": "link_user"})
                     return JSONResponse(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                         content={"detail": "Rate limit exceeded."},
@@ -156,6 +168,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                         }
                     )
                 
+                safe_inc(linkforge_rate_limit_allowed_total, labels={"scope": "link_user"})
                 # Both allowed: proceed and set rate limiting headers
                 response = await call_next(request)
                 response.headers["X-RateLimit-Limit"] = str(settings.LINK_CREATE_RATE_LIMIT)

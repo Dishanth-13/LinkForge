@@ -20,6 +20,7 @@ python-dotenv>=1.0.1
 uuid>=1.30
 pyjwt>=2.8.0
 argon2-cffi>=23.1.0
+prometheus-client>=0.20.0
 
 # Testing
 pytest>=8.0.0

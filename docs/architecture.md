@@ -172,3 +172,29 @@ The Celery worker consumes task payloads and processes them:
 4.  **Exponential Backoff Retries**: If transient database connection errors (`OperationalError`) occur, the worker catches the error and retries execution using exponential backoff:
     $$\text{countdown} = 2^{\text{retries}} \times 5\text{ seconds}$$
 
+---
+
+## 7. Observability & Prometheus Metrics Subsystem
+
+LinkForge implements a production-grade observability pipeline exposing in-memory metric collections directly to Prometheus scrapes.
+
+### 7.1 Centralized Metric Registry
+*   All Counter and Histogram objects are defined inside the [metrics.py](file:///d:/LinkForge/app/core/metrics.py) module. Other services and middleware modules import these objects directly.
+*   **Static Build Info Gauge**: Emits static metadata (`linkforge_build_info`) containing application version, deployment environment, and python runtime environment variables to support Grafana dashboards.
+
+### 7.2 Request Tracking Middleware
+*   An ASGI HTTP middleware ([app/middleware/metrics.py](file:///d:/LinkForge/app/middleware/metrics.py)) times request durations and counts request status returns.
+*   **Low-Cardinality Normalization**: Prevents cardinality explosion on metric label values by grouping dynamic request segments (short codes, integer IDs, UUIDs) into static templates (e.g. `/{short_code}`, `/api/v1/links/{id}`).
+
+### 7.3 Observability Failure Resilience
+*   All counters and histograms are updated via `safe_inc()` and `safe_observe()` helper wrappers.
+*   These helpers encapsulate updates inside a `try...except` block, logging exceptions as structured warnings and failing open. If metrics locks fail or throw errors, application HTTP request handling and tasks are completely unaffected.
+
+### 7.4 Multi-Process Registry Architecture
+*   **Process Boundaries & Registry Isolation**: Because FastAPI (running in the Uvicorn web process) and the Celery background worker execute inside separate OS processes, they maintain completely independent in-memory Prometheus registries.
+*   **Scraping Model Guidelines**: In alignment with production-grade Prometheus best practices, metrics are kept lightweight and process-local. In a production environment:
+    *   The FastAPI web service exposes its local metrics via its `/metrics` endpoint.
+    *   The Celery worker executes a standalone Prometheus HTTP server (on a dedicated port, e.g. `9100`) to expose its background processing telemetry metrics.
+    *   The centralized Prometheus server scrapes both targets independently, aggregating metrics at query time using standard PromQL selectors. This avoids the overhead and failure risks of custom aggregation layers or local filesystem mounts.
+
+

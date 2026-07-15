@@ -6,6 +6,13 @@ from sqlalchemy import select, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.links.models import Link
 from app.features.links.schemas import LinkCreate, LinkUpdate
+from app.core.metrics import (
+    linkforge_cache_hits_total,
+    linkforge_cache_misses_total,
+    linkforge_cache_invalidations_total,
+    db_latency_tracker,
+    safe_inc
+)
 
 # Core Base62 Character Set
 BASE62_CHARSET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -86,12 +93,13 @@ async def create_link(
         click_count=0
     )
     
-    db.add(link)
-    await db.flush()  # Populates link.id from database auto-increment sequence
-    
-    # Calculate deterministic Base62 code
-    link.short_code = encode_base62(link.id)
-    await db.flush()
+    with db_latency_tracker("create_link"):
+        db.add(link)
+        await db.flush()  # Populates link.id from database auto-increment sequence
+        
+        # Calculate deterministic Base62 code
+        link.short_code = encode_base62(link.id)
+        await db.flush()
     
     return link
 
@@ -151,8 +159,9 @@ async def list_links(
         
     # Query limit + 1 records to check if a next page exists
     query = select(Link).where(*filters).order_by(Link.id.desc()).limit(limit + 1)
-    result = await db.execute(query)
-    records = list(result.scalars().all())
+    with db_latency_tracker("pagination_queries"):
+        result = await db.execute(query)
+        records = list(result.scalars().all())
     
     next_cursor = None
     if len(records) > limit:
@@ -171,20 +180,21 @@ async def update_link(
     """
     Modifies properties of an existing link under strict tenant isolation.
     """
-    link = await get_link_by_id(db, link_id, organization_id)
-    if not link:
-        return None
-        
-    if payload.title is not None:
-        link.title = payload.title
-    if payload.description is not None:
-        link.description = payload.description
-    if payload.expires_at is not None:
-        link.expires_at = payload.expires_at
-    if payload.is_active is not None:
-        link.is_active = payload.is_active
-        
-    await db.flush()
+    with db_latency_tracker("update_link"):
+        link = await get_link_by_id(db, link_id, organization_id)
+        if not link:
+            return None
+            
+        if payload.title is not None:
+            link.title = payload.title
+        if payload.description is not None:
+            link.description = payload.description
+        if payload.expires_at is not None:
+            link.expires_at = payload.expires_at
+        if payload.is_active is not None:
+            link.is_active = payload.is_active
+            
+        await db.flush()
     return link
 
 async def soft_delete_link(
@@ -218,8 +228,9 @@ async def resolve_link_by_code(
         or_(Link.expires_at.is_(None), Link.expires_at > now)
     ).order_by(Link.created_at.asc())
     
-    result = await db.execute(query)
-    return result.scalars().first()
+    with db_latency_tracker("redirect_lookup"):
+        result = await db.execute(query)
+        return result.scalars().first()
 
 async def increment_click_count_atomic(
     db: AsyncSession,
@@ -253,13 +264,16 @@ async def get_cached_link(code: str) -> Optional[dict]:
     Bypasses and logs warnings if Redis is down.
     """
     if not redis_manager.client:
+        safe_inc(linkforge_cache_misses_total)
         return None
     try:
         data = await redis_manager.client.get(get_cache_key(code))
         if data:
+            safe_inc(linkforge_cache_hits_total)
             return json.loads(data)
     except Exception as e:
         logger.warning("Redis read operation failed", error=str(e), key=code)
+    safe_inc(linkforge_cache_misses_total)
     return None
 
 async def set_link_cache(link: Link) -> None:
@@ -307,6 +321,6 @@ async def delete_link_cache(short_code: str, custom_alias: Optional[str] = None)
         if custom_alias:
             keys.append(get_cache_key(custom_alias))
         await redis_manager.client.delete(*keys)
+        safe_inc(linkforge_cache_invalidations_total, amount=float(len(keys)))
     except Exception as e:
         logger.warning("Redis delete operation failed", error=str(e), short_code=short_code)
-

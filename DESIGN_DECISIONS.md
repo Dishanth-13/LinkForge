@@ -401,4 +401,57 @@ We calculate a SHA-256 hash of the client's raw IP address (`ip_address`) inside
 *   *Cons*:
     *   We cannot recover the original IP address if forensic inspection is needed (an intentional compliance tradeoff).
 
+---
+
+# Design Decisions: Milestone 7 (Observability & Prometheus Metrics)
+
+This section details the architectural choices, tradeoffs, and design patterns established during Milestone 7 (Observability & Prometheus Metrics) of the LinkForge project.
+
+---
+
+## 22. Centralized In-Memory Metrics Registry & Standard Per-Process Scraping
+
+### Decided Approach
+We declared all metrics inside a single global module (`app/core/metrics.py`) and expose them via a passive `/metrics` endpoint. In alignment with standard Prometheus architecture, metrics are kept lightweight and local to each process's memory space. We avoid using Redis or shared-file synchronization layers, and instead treat the FastAPI web process and Celery worker process as independent scrape targets in production.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Single Source of Truth**: Simplifies metric discovery, avoiding scattered metrics initializations.
+    *   **Shared Registry Code**: Both the Uvicorn FastAPI process and the Celery worker process import from the same module, ensuring identical metric names, types, and labels are defined.
+    *   **Zero Scraping Overhead**: Serving metrics directly from in-memory process collectors avoids network roundtrips to Redis or disk database page lookups at scrape time, making `/metrics` reads extremely fast (<1ms).
+    *   **Production Scraping Standard**: Keeps the application stateless. Prometheus aggregates independent scrape endpoints at query time, which is the recommended Prometheus deployment pattern.
+*   *Cons*:
+    *   A single metrics scrape endpoint on the API port does not expose the Celery worker metrics; the worker must expose its own port (e.g. `9100`) for independent scraping.
+
+---
+
+## 23. Path Normalization for Cardinality Control
+
+### Decided Approach
+We strip raw request subpaths (such as UUIDs, dynamic link short codes, and integer IDs) and replace them with static templates (e.g. `/{short_code}`, `/api/v1/links/{id}`) before generating Prometheus endpoint label values.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Cardinality Safety**: Prevents memory exhaustion on Prometheus scraping nodes by capping the label combination matrix.
+    *   **Aggregated Analytics**: Allows developers to view aggregate latency distribution profiles for the entire `/links` route family rather than isolated charts per dynamic link.
+*   *Cons*:
+    *   Requires regex parsing checks inside the HTTP requests middleware (mitigated by optimizing subpath splitting rules).
+
+### Interview Talking Points
+> *"In a production URL shortener, exposing raw paths directly in Prometheus labels leads to cardinality explosion. A million unique link short codes would create a million unique metric series, crashing the metrics engine. We resolved this by implementing a path normalization middleware that groups all dynamic paths into high-level templates like `/{short_code}` and `/api/v1/links/{id}` before they hit the Prometheus labels registry."*
+
+---
+
+## 24. Fail-Open Safe Metrics Mutation Helpers
+
+### Decided Approach
+We wrap all counter increments and histogram timings inside `safe_inc()` and `safe_observe()` handlers that catch all exceptions, write structured warnings to logger, and return control safely.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Application Availability Priority**: Observability should never cause application downtime. If a metrics update fails (e.g., due to memory constraints or registry lock timeouts), the system log emits a warning and request processing continues.
+*   *Cons*:
+    *   Increases function call nesting, but keeps feature code clean and error-resilient.
+
+
 
