@@ -4,6 +4,7 @@ import { StatusBadge } from '../../../shared/ui/StatusBadge'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import type { LinkRecord } from '../hooks/useLinks'
 import { Link2, Copy, Check, ExternalLink } from 'lucide-react'
+import { buildBackendUrl } from '../../../shared/lib/api'
 
 interface CopyButtonProps {
   text: string
@@ -44,8 +45,6 @@ interface TopLinksTableProps {
 }
 
 export const TopLinksTable: React.FC<TopLinksTableProps> = ({ links, loading }) => {
-  const shortBase = 'http://localhost:8000'
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -93,7 +92,7 @@ export const TopLinksTable: React.FC<TopLinksTableProps> = ({ links, loading }) 
         {!loading && links && links.length > 0 && (
           <div className="flex flex-col divide-y divide-brand-border">
             {links.map((link) => {
-              const shortUrl = `${shortBase}/${link.custom_alias ?? link.short_code}`
+              const shortUrl = buildBackendUrl(link.custom_alias ?? link.short_code)
               const destDisplay =
                 link.original_url.length > 40
                   ? link.original_url.slice(0, 40) + '…'

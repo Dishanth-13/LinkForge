@@ -56,6 +56,8 @@ app.add_middleware(
         "http://127.0.0.1:5173",   # Vite dev server (alternate)
         "http://localhost:4173",   # Vite preview server
     ],
+    # Allow localhost/127.0.0.1 on any port for local frontend dev servers.
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,       # Required for HttpOnly refresh-token cookie
     allow_methods=["*"],
     allow_headers=["*"],

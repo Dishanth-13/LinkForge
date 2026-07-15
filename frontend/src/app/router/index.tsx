@@ -2,6 +2,8 @@ import React, { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { DashboardLayout } from '../../layouts/dashboard/DashboardLayout'
 import { LoginPage } from '../../features/auth/LoginPage'
+import { RegisterPage } from '../../features/auth/RegisterPage'
+import { AuthGuard, PublicOnlyRoute } from '../../features/auth/AuthGuard'
 import { LoadingSpinner } from '../../shared/ui/LoadingSpinner'
 
 // Lazy-loaded pages (code split at route boundary)
@@ -48,11 +50,23 @@ const withSuspense = (element: React.ReactNode) => (
 export const router = createBrowserRouter([
   {
     path: '/login',
-    element: <LoginPage />,
+    element: (
+      <PublicOnlyRoute>
+        <LoginPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/register',
+    element: (
+      <PublicOnlyRoute>
+        <RegisterPage />
+      </PublicOnlyRoute>
+    ),
   },
   {
     path: '/',
-    element: <DashboardLayout />,
+    element: <AuthGuard><DashboardLayout /></AuthGuard>,
     children: [
       { path: '', element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: withSuspense(<DashboardPage />) },

@@ -5,7 +5,7 @@ import { LoadingSpinner } from '../../../shared/ui/LoadingSpinner'
 import { useDeleteLink } from '../hooks/useLinksQuery'
 import { useToast } from '../../../shared/ui/Toast'
 import type { LinkRecord } from '../hooks/useLinksQuery'
-import axios from 'axios'
+import { isApiError, getApiErrorDetail } from '../../../shared/lib/api'
 
 interface DeleteDialogProps {
   open: boolean
@@ -24,8 +24,8 @@ export const DeleteDialog: React.FC<DeleteDialogProps> = ({ open, link, onClose 
       toast(`Deleted /${link.custom_alias ?? link.short_code}`, 'success')
       onClose()
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        toast(err.response?.data?.detail ?? 'Failed to delete link.', 'error')
+      if (isApiError(err)) {
+        toast(getApiErrorDetail(err, 'Failed to delete link.'), 'error')
       } else {
         toast('An unexpected error occurred.', 'error')
       }

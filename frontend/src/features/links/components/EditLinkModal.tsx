@@ -8,7 +8,7 @@ import { useToast } from '../../../shared/ui/Toast'
 import { editLinkSchema, type EditLinkFormValues } from '../schemas/linkSchemas'
 import { cn } from '../../../shared/lib/utils'
 import type { LinkRecord } from '../hooks/useLinksQuery'
-import axios from 'axios'
+import { isApiError, getApiErrorDetail } from '../../../shared/lib/api'
 
 interface EditLinkModalProps {
   open: boolean
@@ -95,9 +95,8 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({ open, link, onClos
       toast('Link updated successfully', 'success')
       handleClose()
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        const detail = err.response?.data?.detail
-        toast(typeof detail === 'string' ? detail : 'Failed to update link.', 'error')
+      if (isApiError(err)) {
+        toast(getApiErrorDetail(err, 'Failed to update link.'), 'error')
       } else {
         toast('An unexpected error occurred.', 'error')
       }

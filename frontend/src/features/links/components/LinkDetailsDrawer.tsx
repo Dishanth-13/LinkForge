@@ -4,8 +4,7 @@ import { X, ExternalLink, Calendar, MousePointerClick, Hash, Link2 } from 'lucid
 import { StatusBadge } from '../../../shared/ui/StatusBadge'
 import { CopyButton } from '../../../shared/ui/CopyButton'
 import type { LinkRecord } from '../hooks/useLinksQuery'
-
-const BACKEND_BASE = 'http://localhost:8000'
+import { buildBackendUrl } from '../../../shared/lib/api'
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString('en-US', {
@@ -37,6 +36,8 @@ interface LinkDetailsDrawerProps {
 
 export const LinkDetailsDrawer: React.FC<LinkDetailsDrawerProps> = ({ link, onClose, onEdit }) => {
   const isOpen = link !== null
+  const shortPath = link ? (link.custom_alias ?? link.short_code) : ''
+  const shortUrl = shortPath ? buildBackendUrl(shortPath) : ''
 
   return (
     <AnimatePresence>
@@ -103,10 +104,10 @@ export const LinkDetailsDrawer: React.FC<LinkDetailsDrawerProps> = ({ link, onCl
               {/* Short URL */}
               <DrawerRow icon={<Link2 className="w-3 h-3" />} label="Short URL">
                 <div className="flex items-center gap-2 font-mono text-brand-accent">
-                  <span className="break-all">{BACKEND_BASE}/{link.custom_alias ?? link.short_code}</span>
-                  <CopyButton text={`${BACKEND_BASE}/${link.custom_alias ?? link.short_code}`} />
+                  <span className="break-all">{shortUrl}</span>
+                  <CopyButton text={shortUrl} />
                   <a
-                    href={`${BACKEND_BASE}/${link.custom_alias ?? link.short_code}`}
+                    href={shortUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-brand-text-secondary hover:text-brand-text-primary transition-colors"

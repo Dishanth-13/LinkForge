@@ -2,17 +2,36 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link2, Eye, EyeOff } from 'lucide-react'
-import { useToast } from '../../shared/ui/Toast'
+import { Link2, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { Card } from '../../shared/ui/Card'
 import { LoadingSpinner } from '../../shared/ui/LoadingSpinner'
-import { useAuth } from './AuthContext'
-import { loginSchema, type LoginFormValues } from './authSchemas'
+import { useToast } from '../../shared/ui/Toast'
 import { getApiErrorDetail, isApiError } from '../../shared/lib/api'
+import { useAuth } from './AuthContext'
+import { registerSchema, type RegisterFormValues } from './authSchemas'
 
-export const LoginPage: React.FC = () => {
+interface FieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  label: string
+  error?: string
+  required?: boolean
+}
+
+const Field: React.FC<FieldProps> = ({ label, error, required, className, ...props }) => (
+  <div className="space-y-1.5">
+    <label htmlFor={props.id} className="text-xs font-semibold text-brand-text-secondary select-none">
+      {label} {required && <span className="text-brand-danger">*</span>}
+    </label>
+    <input
+      {...props}
+      className={className ?? 'w-full px-3 py-2 text-sm bg-brand-bg border border-brand-border rounded-md text-brand-text-primary placeholder:text-brand-text-secondary/40 focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent/30 transition-all font-sans'}
+    />
+    {error && <p className="text-[11px] text-brand-danger">{error}</p>}
+  </div>
+)
+
+export const RegisterPage: React.FC = () => {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { register: registerWorkspace } = useAuth()
   const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -21,33 +40,45 @@ export const LoginPage: React.FC = () => {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+  } = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
     defaultValues: {
+      full_name: '',
+      org_name: '',
       email: '',
       password: '',
+      confirm_password: '',
     },
   })
 
-  const onSubmit = async (values: LoginFormValues) => {
+  const onSubmit = async (values: RegisterFormValues) => {
     setSubmitting(true)
-
     try {
-      await login({ email: values.email.trim(), password: values.password })
-      toast('Signed in successfully.', 'success')
-      navigate('/dashboard', { replace: true })
+      const res = await registerWorkspace({
+        full_name: values.full_name,
+        org_name: values.org_name,
+        email: values.email.trim(),
+        password: values.password,
+      })
+
+      if (res.access_token) {
+        toast('Workspace created and signed in successfully.', 'success')
+        navigate('/dashboard', { replace: true })
+        return
+      }
+
+      toast('Workspace created successfully. Please sign in.', 'success')
+      navigate('/login', { replace: true })
     } catch (error: unknown) {
       if (isApiError(error)) {
-        if (error.response?.status === 401) {
-          const message = 'Invalid email or password. Please try again.'
-          toast(message, 'error')
+        if (error.response?.status === 409) {
+          toast('An account with that email already exists.', 'error')
+        } else if (error.response?.status === 400) {
+          toast(getApiErrorDetail(error, 'Unable to create workspace.'), 'error')
         } else if (error.code === 'ECONNABORTED' || !error.response) {
-          const message = 'Cannot reach the server. Ensure the backend is running on port 8000.'
-          toast(message, 'error')
-        } else if (error.response?.status === 422) {
-          toast(getApiErrorDetail(error, 'Please check your email and password.'), 'error')
+          toast('Cannot reach the server. Ensure the backend is running on port 8000.', 'error')
         } else {
-          toast(getApiErrorDetail(error, 'An unexpected error occurred.'), 'error')
+          toast(getApiErrorDetail(error, 'Unable to create workspace.'), 'error')
         }
       } else {
         toast('An unexpected error occurred.', 'error')
@@ -60,13 +91,12 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-sm space-y-8">
-        {/* Brand Logo Header */}
         <div className="flex flex-col items-center justify-center text-center">
           <div className="flex items-center justify-center w-10 h-10 bg-brand-accent rounded-lg text-white shadow-lg shadow-brand-accent/25 mb-4">
             <Link2 className="w-6 h-6 transform -rotate-45" />
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-brand-text-primary">
-            Welcome to Link<span className="text-brand-accent">Forge</span>
+            Create your Link<span className="text-brand-accent">Forge</span> workspace
           </h2>
           <p className="mt-1.5 text-xs text-brand-text-secondary">
             Enterprise Link Management &amp; Analytics Platform
@@ -76,30 +106,55 @@ export const LoginPage: React.FC = () => {
         <Card className="bg-brand-surface border border-brand-border rounded-xl p-6 shadow-xl shadow-black/40">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-semibold text-brand-text-secondary select-none">
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="name@company.com"
-                className="w-full px-3 py-2 text-sm bg-brand-bg border border-brand-border rounded-md text-brand-text-primary placeholder:text-brand-text-secondary/40 focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent/30 transition-all font-sans"
-                {...register('email')}
-              />
-              {errors.email?.message && <p className="text-[11px] text-brand-danger">{errors.email.message}</p>}
+              <div className="flex items-start gap-2 p-2.5 rounded bg-brand-accent/10 border border-brand-accent/20 text-brand-text-secondary text-xs font-medium">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-brand-accent" />
+                <span>Full name is collected for your workspace profile and can be used later for display purposes.</span>
+              </div>
             </div>
+
+            <Field
+              id="full_name"
+              label="Full Name"
+              required
+              type="text"
+              autoComplete="name"
+              placeholder="Jane Doe"
+              error={errors.full_name?.message}
+              {...register('full_name')}
+            />
+
+            <Field
+              id="org_name"
+              label="Organization Name"
+              required
+              type="text"
+              autoComplete="organization"
+              placeholder="Acme Corporation"
+              error={errors.org_name?.message}
+              {...register('org_name')}
+            />
+
+            <Field
+              id="email"
+              label="Email address"
+              required
+              type="email"
+              autoComplete="email"
+              placeholder="name@company.com"
+              error={errors.email?.message}
+              {...register('email')}
+            />
 
             <div className="space-y-1.5">
               <label htmlFor="password" className="text-xs font-semibold text-brand-text-secondary select-none">
-                Password
+                Password <span className="text-brand-danger">*</span>
               </label>
               <div className="relative">
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  placeholder="Create a strong password"
                   className="w-full px-3 py-2 pr-9 text-sm bg-brand-bg border border-brand-border rounded-md text-brand-text-primary placeholder:text-brand-text-secondary/40 focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent/30 transition-all font-sans"
                   {...register('password')}
                 />
@@ -115,6 +170,17 @@ export const LoginPage: React.FC = () => {
               {errors.password?.message && <p className="text-[11px] text-brand-danger">{errors.password.message}</p>}
             </div>
 
+            <Field
+              id="confirm_password"
+              label="Confirm Password"
+              required
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              placeholder="Re-enter your password"
+              error={errors.confirm_password?.message}
+              {...register('confirm_password')}
+            />
+
             <button
               type="submit"
               disabled={submitting}
@@ -123,10 +189,10 @@ export const LoginPage: React.FC = () => {
               {submitting ? (
                 <span className="flex items-center gap-2">
                   <LoadingSpinner size="sm" />
-                  Signing in…
+                  Creating workspace…
                 </span>
               ) : (
-                'Sign in'
+                'Create Workspace'
               )}
             </button>
           </form>
@@ -134,13 +200,13 @@ export const LoginPage: React.FC = () => {
 
         <div className="space-y-2 text-center">
           <p className="text-[11px] text-brand-text-secondary/50 select-none">
-            Don&apos;t have a workspace?
+            Already have a workspace?
           </p>
           <Link
-            to="/register"
+            to="/login"
             className="inline-flex items-center gap-1 text-xs font-semibold text-brand-accent hover:text-brand-accent/80 transition-colors"
           >
-            Create Workspace →
+            Sign in →
           </Link>
         </div>
 

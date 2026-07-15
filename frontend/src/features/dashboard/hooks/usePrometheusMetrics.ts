@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { api } from '../../../shared/lib/api'
 import { parsePrometheusText, getCounter } from '../../../shared/lib/parseMetrics'
 
 export interface PrometheusKpis {
@@ -11,7 +11,7 @@ export interface PrometheusKpis {
 }
 
 async function fetchPrometheusKpis(): Promise<PrometheusKpis> {
-  const res = await axios.get<string>('http://localhost:8000/metrics', {
+  const res = await api.get<string>('/metrics', {
     timeout: 8000,
     responseType: 'text',
     // Override content-type negotiation

@@ -1,8 +1,11 @@
-import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { SearchButton } from './SearchButton'
 import { Avatar } from '../ui/Avatar'
-import { Bell, Menu, ChevronRight } from 'lucide-react'
+import { Bell, Menu, ChevronRight, LogOut, ChevronDown, ShieldUser } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useAuth } from '../../features/auth/AuthContext'
+import { useToast } from '../ui/Toast'
 
 interface NavbarProps {
   onOpenMobile?: () => void
@@ -10,7 +13,45 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenMobile }) => {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { currentUser, logout } = useAuth()
+  const { toast } = useToast()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const pathParts = location.pathname.split('/').filter(Boolean)
+  const initials = useMemo(() => {
+    const source = currentUser?.email?.split('@')[0] ?? 'User'
+    const parts = source.split(/[._-]+/).filter(Boolean)
+    const combined = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : source.slice(0, 2)
+    return combined.toUpperCase()
+  }, [currentUser])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    window.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    setMenuOpen(false)
+    await logout()
+    toast('Signed out successfully.', 'success')
+    navigate('/login', { replace: true })
+  }
 
   const formatBreadcrumb = (part: string) => {
     return part.charAt(0).toUpperCase() + part.slice(1)
@@ -69,12 +110,57 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobile }) => {
 
           <div className="pl-1 border-l border-brand-border h-4 hidden xs:block" />
 
-          <button
-            className="flex items-center gap-2 pl-1 cursor-pointer group focus:outline-none"
-            aria-label="User Profile"
-          >
-            <Avatar initials="JD" size="sm" className="group-hover:opacity-90 transition-opacity" />
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((value) => !value)}
+              className="flex items-center gap-2 pl-1 cursor-pointer group focus:outline-none"
+              aria-label="User profile menu"
+            >
+              <Avatar initials={initials} size="sm" className="group-hover:opacity-90 transition-opacity" />
+              <ChevronDown className="w-3.5 h-3.5 text-brand-text-secondary/60 hidden sm:block" />
+            </button>
+
+            <AnimatePresence>
+              {menuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-brand-border bg-brand-surface shadow-2xl shadow-black/50 overflow-hidden"
+                >
+                  <div className="px-4 py-3 border-b border-brand-border bg-white/[0.02]">
+                    <div className="flex items-center gap-3">
+                      <Avatar initials={initials} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-brand-text-primary truncate">
+                          {currentUser?.email ?? 'Signed in user'}
+                        </p>
+                        <p className="text-[11px] text-brand-text-secondary truncate">
+                          {currentUser?.role ?? 'member'} · {currentUser?.organization_id?.slice(0, 8) ?? 'workspace'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-brand-text-secondary hover:text-brand-text-primary hover:bg-white/5 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Logout
+                    </button>
+                  </div>
+
+                  <div className="px-4 py-2 border-t border-brand-border bg-white/[0.015] text-[10px] text-brand-text-secondary/60 flex items-center gap-1.5">
+                    <ShieldUser className="w-3 h-3" />
+                    Protected session
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </header>

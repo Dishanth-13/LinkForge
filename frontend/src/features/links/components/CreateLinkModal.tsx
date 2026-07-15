@@ -7,7 +7,7 @@ import { useCreateLink } from '../hooks/useLinksQuery'
 import { useToast } from '../../../shared/ui/Toast'
 import { createLinkSchema, type CreateLinkFormValues } from '../schemas/linkSchemas'
 import { cn } from '../../../shared/lib/utils'
-import axios from 'axios'
+import { isApiError, getApiErrorDetail } from '../../../shared/lib/api'
 
 interface CreateLinkModalProps {
   open: boolean
@@ -71,15 +71,8 @@ export const CreateLinkModal: React.FC<CreateLinkModalProps> = ({ open, onClose 
       toast('Link created successfully', 'success')
       handleClose()
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        const detail = err.response?.data?.detail
-        if (typeof detail === 'string') {
-          toast(detail, 'error')
-        } else if (Array.isArray(detail)) {
-          toast(detail[0]?.msg ?? 'Validation error', 'error')
-        } else {
-          toast('Failed to create link. Check your inputs.', 'error')
-        }
+      if (isApiError(err)) {
+        toast(getApiErrorDetail(err, 'Failed to create link. Check your inputs.'), 'error')
       } else {
         toast('An unexpected error occurred.', 'error')
       }

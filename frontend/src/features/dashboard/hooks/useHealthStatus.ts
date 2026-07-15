@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { api } from '../../../shared/lib/api'
 
 interface HealthComponents {
   database?: string
@@ -20,10 +20,9 @@ export interface PlatformHealth {
 }
 
 async function fetchHealth(): Promise<PlatformHealth> {
-  // Use plain axios (no auth required on health probes)
   const [liveRes, readyRes] = await Promise.allSettled([
-    axios.get<HealthResponse>('http://localhost:8000/live', { timeout: 5000 }),
-    axios.get<HealthResponse>('http://localhost:8000/ready', { timeout: 5000 }),
+    api.get<HealthResponse>('/live', { timeout: 5000 }),
+    api.get<HealthResponse>('/ready', { timeout: 5000 }),
   ])
 
   const apiStatus =

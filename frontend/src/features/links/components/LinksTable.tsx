@@ -8,6 +8,7 @@ import { StatusBadge } from '../../../shared/ui/StatusBadge'
 import { CopyButton } from '../../../shared/ui/CopyButton'
 import { cn } from '../../../shared/lib/utils'
 import type { LinkRecord } from '../hooks/useLinksQuery'
+import { buildBackendUrl } from '../../../shared/lib/api'
 
 // Lightweight date formatter — avoids adding date-fns dependency
 const fmtDate = (iso: string) => {
@@ -136,7 +137,6 @@ const ActionMenu: React.FC<ActionMenuProps> = ({ link, onEdit, onDelete, onToggl
 
 // ─── Main Table ───────────────────────────────────────────────────────────────
 
-const BACKEND_BASE = 'http://localhost:8000'
 const PAGE_SIZE = 15
 
 export const LinksTable: React.FC<LinksTableProps> = ({
@@ -211,7 +211,7 @@ export const LinksTable: React.FC<LinksTableProps> = ({
               <AnimatePresence initial={false}>
                 {pageLinks.map((link, i) => {
                   const shortPath = link.custom_alias ?? link.short_code
-                  const shortUrl = `${BACKEND_BASE}/${shortPath}`
+                  const shortUrl = buildBackendUrl(shortPath)
                   const isSelected = selectedIds.has(link.id)
 
                   return (
