@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     CACHE_TTL_SECONDS: int = 3600
 
+    # Rate Limiter Settings
+    AUTH_RATE_LIMIT: int = 5
+    AUTH_RATE_WINDOW: int = 60
+    LINK_CREATE_RATE_LIMIT: int = 60
+    LINK_CREATE_RATE_WINDOW: int = 60
+
     # Security Settings
     JWT_SECRET_KEY: str = "dev_secret_key_change_in_production_32_chars"
     JWT_ALGORITHM: str = "HS256"

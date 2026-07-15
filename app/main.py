@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.redis import redis_manager
 from app.middleware.request_id import RequestIdMiddleware
+from app.middleware.rate_limiter import RateLimitMiddleware
 from app.features.health.router import router as health_router
 from app.features.auth.router import router as auth_router
 from app.features.users.router import router as user_router
@@ -36,6 +37,7 @@ app = FastAPI(
 
 # Apply tracing middleware first so all request logs capture request_id
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 # Register functional features
 app.include_router(health_router)

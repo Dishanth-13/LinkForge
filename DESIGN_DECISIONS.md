@@ -281,3 +281,58 @@ We catch all Redis network operations inside `try...except Exception` blocks, lo
 
 ### Interview Talking Points
 > *"High availability of redirections is a critical SLA. We wrapped all Redis operations in try-except blocks to catch connection or socket timeouts. If Redis becomes unavailable, the system logs a structured warning and degrades gracefully by routing lookups directly to PostgreSQL, keeping the service online."*
+
+---
+
+# Design Decisions: Milestone 5 (Redis Token Bucket Rate Limiting)
+
+This section details the architectural choices, tradeoffs, and design patterns established during Milestone 5 (Redis Rate Limiting) of the LinkForge project.
+
+---
+
+## 15. Token Bucket Algorithm over Fixed/Sliding Window
+
+### Decided Approach
+We implemented the **Token Bucket** algorithm for distributed rate limiting instead of Fixed Window or Sliding Window Log options.
+
+### Alternatives Considered
+*   **Fixed Window**: Simple `INCR` + `EXPIRE` counters. (Rejected because it permits twice the rate limit at window boundaries).
+*   **Sliding Window Log**: Uses Redis Sorted Sets (`ZSET`) storing timestamps of every hit. (Rejected because of $O(\log N)$ command overhead and high Redis memory consumption as hits grow).
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Smooth Rate Control**: Refills tokens continuously with time, neutralizing boundary bursts.
+    *   **Memory Efficiency**: Requires only 2 hash fields (`tokens`, `last_updated`) per bucket key, keeping Redis memory usage strictly constant ($O(1)$) regardless of traffic volume.
+    *   **Burst Capacity**: Permits safe bursts up to the bucket capacity while maintaining the sustained refill rate over time.
+*   *Cons*:
+    *   Slightly more complex mathematical logic requiring a custom Redis Lua script.
+
+---
+
+## 16. Server-Side Redis TIME Calculation
+
+### Decided Approach
+We calculate the current execution time using the Redis server-side `TIME` command (`redis.call('TIME')`) within the Lua script instead of injecting client-side or application-side timestamps.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Anti-Clock Drift**: Neutralizes clock drift across multiple distributed FastAPI server instances. If server A's clock is 5 seconds ahead of server B's, they still evaluate rates against the exact same, single source of time truth (the Redis server's system clock).
+*   *Cons*:
+    *   A minor execution latency overhead in Redis from calling the internal OS time function during script execution (microsecond-level, negligible).
+
+### Interview Talking Points
+> *"In a distributed system, relying on application nodes for timestamps introduces clock drift vulnerabilities. If one server's clock runs fast, rate limit refills are computed incorrectly. We resolved this by querying the Redis server-side `TIME` command directly inside our Lua script, guaranteeing a unified clock source for all nodes."*
+
+---
+
+## 17. Dual-Bucket Enforcement (IP and User)
+
+### Decided Approach
+We apply both IP-scoped and User-scoped rate limiters sequentially for the `POST /api/v1/links` URL creation endpoint.
+
+### Trade-offs & Rationale
+*   *Pros*:
+    *   **Multi-Vector Protection**: Prevents a single malicious actor from exhausting their user quota from different IPs (brute-forcing limits) and protects the server against DDoS creation attempts from a single IP using multiple compromised user tokens.
+*   *Cons*:
+    *   Increases Redis network commands to two evaluation checks for link creation requests. (Mitigated by combining evaluation code in Python, but still hits Redis twice).
+

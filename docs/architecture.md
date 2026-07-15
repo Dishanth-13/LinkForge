@@ -103,3 +103,36 @@ If the Redis connection fails or times out:
 *   Logs a structured `warning` through `structlog` to alert operations.
 *   Bypasses the caching layer, falling back directly to PostgreSQL to resolve the redirect.
 *   This ensures that link redirects remain fully functional even under cache outages.
+
+---
+
+## 5. Distributed Rate Limiting Subsystem
+
+To protect resource-intensive endpoints and avoid credential/URL creation spam, LinkForge integrates a distributed rate limiter operating at the HTTP middleware layer.
+
+### 5.1 Token Bucket Lua Implementation
+The rate limiter implements the **Token Bucket** algorithm inside a Redis Lua script.
+*   **Lazy Refill & Consume**: Refills are calculated on-the-fly when requests arrive to avoid background polling.
+*   **Time-Drift Mitigation**: The script calls the Redis server-side `TIME` command (`redis.call('TIME')`) instead of receiving application-instance timestamps, neutralizing clock drift across distributed nodes.
+*   **HSET Updates**: Current state values (tokens and last updated timestamps) are updated atomically via `HSET` inside Redis.
+
+### 5.2 Key Namespaces
+Rate limits are strictly isolated using scoped prefixes to prevent different endpoints from sharing token states:
+*   **Authentication Endpoints** (`/auth/login`, `/auth/register`):
+    *   *Limit*: 5 requests per minute.
+    *   *Key Format*: `v1:ratelimit:auth:ip:{client_ip}` (tracked by client IP).
+*   **Link Creation Endpoint** (`POST /api/v1/links`):
+    *   *Limit*: 60 requests per minute.
+    *   *Keys Evaluated*: Checks both:
+        *   IP-scoped: `v1:ratelimit:links:ip:{client_ip}`
+        *   User-scoped: `v1:ratelimit:links:user:{user_id}` (if authenticated).
+
+### 5.3 Response Header Bindings
+Standard rate limit metadata is injected onto all HTTP responses matching rate-limited paths:
+*   `X-RateLimit-Limit`: Maximum bucket capacity (e.g. `5` or `60`).
+*   `X-RateLimit-Remaining`: Rounded-down integer count of available tokens.
+*   `Retry-After`: Exists only on `HTTP 429 Too Many Requests` responses, containing the ceil integer seconds until a token refills.
+
+### 5.4 Resiliency & Fail-Open
+If Redis is down or connections time out, the middleware intercepts the exception, prints a structured `warning` log via `structlog`, and **fails open**, allowing the request to proceed. Endpoint availability is prioritized over enforcement.
+

@@ -13,10 +13,18 @@ from app.core.redis import redis_manager
 async def init_redis_client():
     """
     Ensures the Redis connection client is initialized for tests.
+    Bound directly to the active test event loop to prevent Closed Loop errors.
+    Clears rate limit keys before each test to prevent test rate limit exhaustion.
     """
-    if redis_manager.client is None:
-        redis_manager.init_client()
+    redis_manager.init_client()
+    try:
+        keys = await redis_manager.client.keys("v1:ratelimit:*")
+        if keys:
+            await redis_manager.client.delete(*keys)
+    except Exception:
+        pass
     yield
+    await redis_manager.close()
 
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
