@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
 import prometheus_client
 from app.core.config import settings
 from app.core.logging import logger
@@ -46,7 +47,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Apply tracing middleware first so all request logs capture request_id
+# CORS — must be registered after custom middleware so it wraps all responses.
+# Allow the Vite dev server (port 5173) and a production origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://127.0.0.1:5173",   # Vite dev server (alternate)
+        "http://localhost:4173",   # Vite preview server
+    ],
+    allow_credentials=True,       # Required for HttpOnly refresh-token cookie
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Apply tracing middleware — these run inside the CORS wrapper
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(HttpMetricsMiddleware)
 app.add_middleware(RateLimitMiddleware)
