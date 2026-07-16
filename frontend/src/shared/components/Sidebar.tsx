@@ -15,7 +15,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Building
+  Building,
+  Key
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -62,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: "Settings",
       items: [
         { to: "/team", label: "Team", icon: Users },
+        { to: "/settings/api-keys", label: "API Keys", icon: Key },
         { to: "/settings", label: "Settings", icon: Settings }
       ]
     }

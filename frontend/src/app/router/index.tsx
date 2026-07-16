@@ -35,6 +35,9 @@ const TeamPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('../../features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage }))
 )
+const ApiKeysPage = lazy(() =>
+  import('../../features/apiKeys/ApiKeysPage').then((m) => ({ default: m.ApiKeysPage }))
+)
 
 // Shared Suspense fallback — full-page centred spinner
 const PageFallback = () => (
@@ -77,6 +80,7 @@ export const router = createBrowserRouter([
       { path: 'observability', element: withSuspense(<ObservabilityPage />) },
       { path: 'team', element: withSuspense(<TeamPage />) },
       { path: 'settings', element: withSuspense(<SettingsPage />) },
+      { path: 'settings/api-keys', element: withSuspense(<ApiKeysPage />) },
     ],
   },
   {

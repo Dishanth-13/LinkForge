@@ -9,6 +9,7 @@ from app.features.auth.models import RefreshToken
 from app.features.links.models import Link
 from app.features.analytics.models import ClickEvent
 from app.features.audit.models import AuditEvent
+from app.features.api_keys.models import APIKey
 
 # Explicit list of all registered tables for tracking
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "RefreshToken",
     "Link",
     "ClickEvent",
-    "AuditEvent"
+    "AuditEvent",
+    "APIKey"
 ]
