@@ -106,16 +106,20 @@ async def create_link(
 async def get_link_by_id(
     db: AsyncSession,
     link_id: int,
-    organization_id: uuid.UUID
+    organization_id: uuid.UUID,
+    allow_inactive: bool = False
 ) -> Optional[Link]:
     """
     Queries a single Link record by ID under a strict tenant isolation boundary.
     """
-    query = select(Link).where(
+    filters = [
         Link.id == link_id,
-        Link.organization_id == organization_id,
-        Link.is_active == True
-    )
+        Link.organization_id == organization_id
+    ]
+    if not allow_inactive:
+        filters.append(Link.is_active == True)
+        
+    query = select(Link).where(*filters)
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
@@ -181,7 +185,7 @@ async def update_link(
     Modifies properties of an existing link under strict tenant isolation.
     """
     with db_latency_tracker("update_link"):
-        link = await get_link_by_id(db, link_id, organization_id)
+        link = await get_link_by_id(db, link_id, organization_id, allow_inactive=True)
         if not link:
             return None
             

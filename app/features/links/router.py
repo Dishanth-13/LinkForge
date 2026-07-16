@@ -147,8 +147,9 @@ async def modify_link(
     Generates a security AuditEvent tracking modifications.
     """
     try:
-        # Pre-load existing link to capture current cache keys
-        existing_link = await get_link_by_id(db, link_id, organization_id)
+        # Pre-load existing link to capture current cache keys.
+        # Must allow_inactive=True so deactivated links can be reactivated via PATCH.
+        existing_link = await get_link_by_id(db, link_id, organization_id, allow_inactive=True)
         if not existing_link:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

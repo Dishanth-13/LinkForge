@@ -17,6 +17,11 @@ celery_app.conf.update(
     enable_utc=True,
     task_acks_late=True,                 # Late acknowledgment ensures At-Least-Once delivery guarantees
     task_reject_on_worker_lost=True,     # Re-queue the task if the worker process is killed/lost
+    # Windows does not support the POSIX shared-memory semaphores used by Celery's default
+    # 'prefork' pool (billiard raises PermissionError WinError 5/6 on every spawn).
+    # 'solo' runs tasks synchronously in the main process, which is the correct choice on
+    # Windows for development. On Linux/macOS in production, override with --pool=prefork.
+    worker_pool="solo",
 )
 
 # Load the centralized model registry to fully populate Base.metadata for the worker process
