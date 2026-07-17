@@ -154,3 +154,61 @@ async def test_api_key_tenant_isolation(async_client, db_session: AsyncSession):
     # Org B attempts to regenerate Org A's key - must return 404/403
     regen_res = await async_client.post(f"/api/v1/api-keys/{key_a_id}/regenerate", headers=headers_b)
     assert regen_res.status_code == status.HTTP_404_NOT_FOUND
+
+@pytest.mark.asyncio
+async def test_api_key_endpoint_authentication(async_client, db_session: AsyncSession):
+    """
+    Verifies that calling /api/v1/links/ with only X-API-Key:
+    1. Returns HTTP 200.
+    2. Updates last_used_at.
+    3. Fails if revoked.
+    4. JWT auth still functions normally.
+    """
+    # 1. Register and Login to create the API Key
+    await async_client.post("/api/v1/auth/register", json={
+        "org_name": "Integration Org",
+        "email": "integration_owner@acme.com",
+        "password": "secure_password_123"
+    })
+    login_res = await async_client.post("/api/v1/auth/login", json={
+        "email": "integration_owner@acme.com",
+        "password": "secure_password_123"
+    })
+    token = login_res.json()["access_token"]
+    jwt_headers = {"Authorization": f"Bearer {token}"}
+    
+    # Create the API key via JWT
+    create_payload = {
+        "name": "Integration Key",
+        "environment": "production",
+        "permissions": [APIKeyPermission.READ_LINKS]
+    }
+    create_res = await async_client.post("/api/v1/api-keys", json=create_payload, headers=jwt_headers)
+    assert create_res.status_code == status.HTTP_201_CREATED
+    key_data = create_res.json()
+    plain_key = key_data["plain_text_key"]
+    key_id = key_data["id"]
+    
+    # 2. Authenticate using ONLY X-API-Key against GET /api/v1/links
+    api_key_headers = {"X-API-Key": plain_key}
+    links_res = await async_client.get("/api/v1/links/", headers=api_key_headers)
+    assert links_res.status_code == status.HTTP_200_OK
+    assert "links" in links_res.json()
+    
+    # 3. Verify last_used_at is updated
+    db_res = await db_session.execute(select(APIKey).where(APIKey.id == uuid.UUID(key_id)))
+    key_db = db_res.scalar_one()
+    assert key_db.last_used_at is not None
+    last_used_first = key_db.last_used_at
+    
+    # 4. Verify revoked key returns 401 Unauthorized
+    await async_client.delete(f"/api/v1/api-keys/{key_id}", headers=jwt_headers)
+    
+    failed_res = await async_client.get("/api/v1/links/", headers=api_key_headers)
+    assert failed_res.status_code == status.HTTP_401_UNAUTHORIZED
+    assert failed_res.json()["detail"] == "Invalid or revoked API key"
+    
+    # 5. Verify JWT authentication still behaves exactly as before
+    links_jwt_res = await async_client.get("/api/v1/links/", headers=jwt_headers)
+    assert links_jwt_res.status_code == status.HTTP_200_OK
+

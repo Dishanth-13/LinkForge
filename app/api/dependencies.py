@@ -21,63 +21,6 @@ class AuthContext(BaseModel):
     permissions: list[str] = []
 
 
-async def get_current_user(
-    db: AsyncSession = Depends(get_db),
-    token_creds: HTTPAuthorizationCredentials = Depends(security_scheme)
-) -> User:
-    """
-    Decodes the JWT access token and retrieves the associated active User.
-    Binds the user ID and organization ID to logging contextvars.
-    """
-    if not token_creds:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication credentials were not provided",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    token = token_creds.credentials
-    payload = decode_token(token)
-    if not payload or payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    user_id_str = payload.get("sub")
-    org_id_str = payload.get("org_id")
-    if not user_id_str or not org_id_str:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Malformed authentication claims",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    user_id = uuid.UUID(user_id_str)
-    org_id = uuid.UUID(org_id_str)
-    
-    # Query database to confirm user status
-    user = await get_user_by_id(db, user_id=user_id, organization_id=org_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User session is invalid or user has been deactivated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account is deactivated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Bind tenant metadata to structlog context variables automatically
-    bind_contextvars(user_id=str(user.id), organization_id=str(user.organization_id))
-    
-    return user
-
 async def get_auth_context(
     db: AsyncSession = Depends(get_db),
     token_creds: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
@@ -102,6 +45,7 @@ async def get_auth_context(
         
         return AuthContext(
             organization_id=api_key_obj.organization_id,
+            user_id=api_key_obj.created_by,
             api_key_id=api_key_obj.id,
             auth_method="api_key",
             permissions=api_key_obj.permissions
@@ -152,6 +96,41 @@ async def get_auth_context(
         detail="Authentication credentials were not provided",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+async def get_current_user(
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context)
+) -> User:
+    """
+    Decodes credentials (JWT or API Key) via get_auth_context, and retrieves
+    the associated active User. Binds metadata to logging contextvars.
+    """
+    if not auth_ctx.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    user = await get_user_by_id(db, user_id=auth_ctx.user_id, organization_id=auth_ctx.organization_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User session is invalid or user has been deactivated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is deactivated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Bind tenant metadata to structlog context variables automatically
+    bind_contextvars(user_id=str(user.id), organization_id=str(user.organization_id))
+    
+    return user
 
 async def get_current_organization(
     current_user: User = Depends(get_current_user)
