@@ -69,7 +69,13 @@ async def create_new_link(
             event_type="link.created",
             organization_id=organization_id,
             actor_user_id=current_user.id,
-            metadata={"link_id": str(link.id), "short_code": link.short_code, "original_url": link.original_url}
+            resource_type="link",
+            resource_id=str(link.id),
+            metadata={
+                "short_code": link.short_code,
+                "custom_alias": link.custom_alias,
+                "original_url": link.original_url
+            }
         )
         
         await db.commit()
@@ -155,6 +161,7 @@ async def modify_link(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Link not found or access denied."
             )
+        old_is_active = existing_link.is_active
         old_short_code = existing_link.short_code
         old_custom_alias = existing_link.custom_alias
 
@@ -165,16 +172,25 @@ async def modify_link(
                 detail="Link not found or access denied."
             )
             
+        # Determine specific event type for activation/deactivation toggles
+        if payload.is_active is not None and old_is_active != link.is_active:
+            event_type = "link.activated" if link.is_active else "link.deactivated"
+        else:
+            event_type = "link.updated"
+            
         request_id = getattr(request.state, "request_id", "unknown")
         await log_audit_event(
             db,
             request_id=request_id,
-            event_type="link.updated",
+            event_type=event_type,
             organization_id=organization_id,
             actor_user_id=current_user.id,
+            resource_type="link",
+            resource_id=str(link.id),
             metadata={
-                "link_id": str(link.id),
                 "short_code": link.short_code,
+                "custom_alias": link.custom_alias,
+                "original_url": link.original_url,
                 "updated_fields": payload.model_dump(exclude_unset=True)
             }
         )
@@ -227,7 +243,12 @@ async def delete_link(
             event_type="link.deleted",
             organization_id=organization_id,
             actor_user_id=current_user.id,
-            metadata={"link_id": str(link.id), "short_code": link.short_code}
+            resource_type="link",
+            resource_id=str(link.id),
+            metadata={
+                "short_code": link.short_code,
+                "custom_alias": link.custom_alias
+            }
         )
         
         await db.commit()

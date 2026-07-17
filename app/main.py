@@ -15,6 +15,8 @@ from app.features.organizations.router import router as org_router
 from app.features.links.router import router as link_router, redirect_router
 from app.features.analytics.router import router as analytics_router
 from app.features.api_keys.router import router as api_keys_router
+from app.features.audit.router import router as audit_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -88,4 +90,5 @@ app.include_router(org_router, prefix="/api/v1")
 app.include_router(link_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(api_keys_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
 app.include_router(redirect_router)

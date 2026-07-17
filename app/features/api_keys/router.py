@@ -1,6 +1,6 @@
 import uuid
 from typing import Sequence
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.dependencies import get_current_user
@@ -12,6 +12,7 @@ from app.features.api_keys.services import (
     revoke_api_key,
     regenerate_api_key
 )
+from app.features.audit.services import log_audit_event
 
 router = APIRouter(prefix="/api-keys", tags=["API Keys"])
 
@@ -28,6 +29,7 @@ async def list_keys(
 
 @router.post("", response_model=APIKeyCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def create_key(
+    request: Request,
     payload: APIKeyCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -40,6 +42,22 @@ async def create_key(
         organization_id=current_user.organization_id,
         created_by=current_user.id,
         payload=payload
+    )
+    
+    # Log audit event
+    request_id = getattr(request.state, "request_id", "unknown")
+    await log_audit_event(
+        db,
+        request_id=request_id,
+        event_type="api_key.created",
+        organization_id=current_user.organization_id,
+        actor_user_id=current_user.id,
+        resource_type="api_key",
+        resource_id=str(key_obj.id),
+        metadata={
+            "key_name": key_obj.name,
+            "environment": key_obj.environment
+        }
     )
     
     # Map model attributes + plain text key to response
@@ -61,6 +79,7 @@ async def create_key(
 @router.delete("/{key_id}", response_model=APIKeyResponse)
 async def revoke_key(
     key_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> APIKeyResponse:
@@ -73,11 +92,28 @@ async def revoke_key(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="API key not found or access denied"
         )
+        
+    # Log audit event
+    request_id = getattr(request.state, "request_id", "unknown")
+    await log_audit_event(
+        db,
+        request_id=request_id,
+        event_type="api_key.revoked",
+        organization_id=current_user.organization_id,
+        actor_user_id=current_user.id,
+        resource_type="api_key",
+        resource_id=str(key_obj.id),
+        metadata={
+            "key_name": key_obj.name,
+            "environment": key_obj.environment
+        }
+    )
     return key_obj
 
 @router.post("/{key_id}/regenerate", response_model=APIKeyCreatedResponse)
 async def regenerate_key(
     key_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> APIKeyCreatedResponse:
@@ -97,6 +133,23 @@ async def regenerate_key(
         )
         
     key_obj, plain_key = result
+    
+    # Log audit event
+    request_id = getattr(request.state, "request_id", "unknown")
+    await log_audit_event(
+        db,
+        request_id=request_id,
+        event_type="api_key.regenerated",
+        organization_id=current_user.organization_id,
+        actor_user_id=current_user.id,
+        resource_type="api_key",
+        resource_id=str(key_obj.id),
+        metadata={
+            "key_name": key_obj.name,
+            "environment": key_obj.environment,
+            "old_key_id": str(key_id)
+        }
+    )
     
     response_data = APIKeyCreatedResponse(
         id=key_obj.id,

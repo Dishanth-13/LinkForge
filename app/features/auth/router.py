@@ -60,6 +60,8 @@ async def register(
             event_type="organization.created",
             organization_id=org.id,
             actor_user_id=user.id,
+            resource_type="organization",
+            resource_id=str(org.id),
             metadata={"org_name": org.name}
         )
         
@@ -69,7 +71,9 @@ async def register(
             event_type="user.registered",
             organization_id=org.id,
             actor_user_id=user.id,
-            metadata={"email": user.email}
+            resource_type="user",
+            resource_id=str(user.id),
+            metadata={"user_email": user.email}
         )
         
         await db.commit()
@@ -129,7 +133,10 @@ async def login(
         request_id=request_id,
         event_type="user.login",
         organization_id=user.organization_id,
-        actor_user_id=user.id
+        actor_user_id=user.id,
+        resource_type="user",
+        resource_id=str(user.id),
+        metadata={"user_email": user.email}
     )
     
     await db.commit()
@@ -236,7 +243,12 @@ async def logout(
                 event_type="user.logout",
                 organization_id=org_id,
                 actor_user_id=token_record.user_id,
-                metadata={"jti": token_record.jti}
+                resource_type="user",
+                resource_id=str(token_record.user_id),
+                metadata={
+                    "jti": token_record.jti,
+                    "user_email": user.email if user else None
+                }
             )
             
             await db.commit()

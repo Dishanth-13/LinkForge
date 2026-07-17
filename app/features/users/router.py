@@ -66,7 +66,12 @@ async def add_user(
             event_type="user.created",
             organization_id=current_user.organization_id,
             actor_user_id=current_user.id,
-            metadata={"created_user_id": str(new_user.id), "role": new_user.role.value}
+            resource_type="user",
+            resource_id=str(new_user.id),
+            metadata={
+                "user_email": new_user.email,
+                "role": new_user.role.value
+            }
         )
         
         await db.commit()
@@ -144,7 +149,9 @@ async def delete_user(
             event_type="user.deleted",
             organization_id=current_user.organization_id,
             actor_user_id=current_user.id,
-            metadata={"deleted_user_id": str(user_id)}
+            resource_type="user",
+            resource_id=str(user_id),
+            metadata={"user_email": target_user.email}
         )
         
         await db.commit()

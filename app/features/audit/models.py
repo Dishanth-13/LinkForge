@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional, Any
 from sqlalchemy import String, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 class AuditEvent(Base):
@@ -23,6 +23,10 @@ class AuditEvent(Base):
     # event_type indicates the action (e.g., 'user.login', 'api_key.revoked')
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     
+    # Associated resource mapping for activity streams
+    resource_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    resource_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    
     # timestamp of the audit event
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -34,6 +38,14 @@ class AuditEvent(Base):
     # Custom metadata dict. Column name is "metadata", property is "metadata_json" 
     # to avoid overriding the SQLAlchemy Declarative base metadata class attribute.
     metadata_json: Mapped[Optional[dict[str, Any]]] = mapped_column("metadata", JSONB, nullable=True)
+
+    # Actor user relationship definition
+    actor: Mapped[Optional["User"]] = relationship(
+        "User",
+        primaryjoin="AuditEvent.actor_user_id == User.id",
+        foreign_keys=[actor_user_id],
+        uselist=False
+    )
 
     def __repr__(self) -> str:
         return f"<AuditEvent {self.event_type} id={self.id} actor={self.actor_user_id}>"
